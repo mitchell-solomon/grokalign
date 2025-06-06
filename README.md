@@ -1,7 +1,7 @@
 # Jacobian Alignment Explains Grokking and Centroid Alignment Identifies It
 
-### (Paper)()
-### (Blog)(https://thomaswalker1.github.io/blog/centroid_alignment_grokking.html)
+### [Paper][]
+### [Blog][https://thomaswalker1.github.io/blog/centroid_alignment_grokking.html]
 
 This is the official GitHub repository for our paper "Jacobian Alignment Explain Grokking and Centroid Alignment Identifies It". `utils.py` provides classes to perform Jacobian regularisation, compute centroids, and compute the explained variance of the first principal component of the Jacobian matrix on a model for input batches.
 
