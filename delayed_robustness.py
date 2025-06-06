@@ -109,7 +109,7 @@ def construct_model(config):
 
 def train(config):
     run_name = f"{config.loss_fn}-{config.weight_decay}Wd-{config.jac_reg}Jr"
-    wb.init(project='test_delayed_robustness', config=config, name=run_name)
+    wb.init(project='delayed_robustness', config=config, name=run_name)
     torch.manual_seed(config.seed)
     if 'cuda' in config.device:
         torch.cuda.manual_seed_all(config.seed)
