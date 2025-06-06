@@ -55,7 +55,7 @@ def centroid_statistics(centroids, x):
     return {'centroid_norm': norm.mean().item(), 'centroid_alignment': alignment}
 
 def train(config):
-    run_name = f"{config.optimizer}-Jr_at_{config.jac_level}"
+    run_name = f"Jr_at_{config.jac_level}"
     wb.init(project='inhibiting_generalisation', config=config, name=run_name)
 
     torch.manual_seed(config.seed)
@@ -109,7 +109,6 @@ if __name__ == '__main__':
     parser.add_argument('--depth', type=int, default=4)
     parser.add_argument('--num_logs', type=int, default=64)
     parser.add_argument('--seed', type=int, default=0)
-    parser.add_argument('--optimizer', type=str, default='adamw')
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--data_dir', type=str, default='./data')
     args = parser.parse_args()
