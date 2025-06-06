@@ -114,7 +114,7 @@ def compute_rate_of_change_of_alignment(ntks, losses, lr):
     return lr * np.mean(np.multiply(ntks, losses))
 
 def centroid_statistics(point, centroids):
-    centroid = centroids.centroids(point).cpu()[0]
+    centroid = centroids.compute_centroids(point).cpu()[0]
     inner_product = (centroid * point).sum(dim=1).item()
     norm = centroid.norm().item()
     return {
