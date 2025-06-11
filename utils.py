@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-class JacobianRegulariser:
+class GrokAlign:
     """
     Reference: https://arxiv.org/abs/1908.02729
     """

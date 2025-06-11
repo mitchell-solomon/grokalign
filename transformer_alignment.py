@@ -1,14 +1,14 @@
 import torch
 import numpy as np
 from tqdm import tqdm
-from utils import Transformer, JacobianRegulariser, Centroids, full_loss, full_accuracy, gini_from_fourier_norms
+from utils import Transformer, GrokAlign, Centroids, full_loss, full_accuracy, gini_from_fourier_norms
 import wandb as wb
 import os
 import argparse
 
 def train(config, device='cuda'):
 
-    run_name = f"{config.p}-{config.weight_decay}Wd-{config.jac_reg}Jr-{'FixEmb' if config.fixed_embedding else ''}"
+    run_name = f"{config.p}-{config.weight_decay}Wd-{config.lambda_jac}GA-{'FixEmb' if config.fixed_embedding else ''}"
     run = wb.init(project='test_transformer_alignment', config=vars(config), name=run_name)
 
     torch.manual_seed(config.seed)
@@ -47,8 +47,8 @@ def train(config, device='cuda'):
         n_ctx=config.n_ctx
     ).to(device)
 
-    if config.jac_reg > 0:
-        jacobian_regulariser = JacobianRegulariser(lambda x: model.unembed(model.block(model.pos_embed(x)))[:, -1],device=device)
+    if config.lambda_jac > 0:
+        grokalign = GrokAlign(lambda x: model.unembed(model.block(model.pos_embed(x)))[:, -1],device=device)
     embedding_centroids = Centroids(lambda x: model.unembed(model.block(model.pos_embed(x)))[:, -1], device=device)
 
     if config.fixed_embedding:
@@ -85,9 +85,9 @@ def train(config, device='cuda'):
 
         model.train()
         train_loss = full_loss(model, train_loader, device)
-        if config.jac_reg > 0:
+        if config.lambda_jac > 0:
             x=model.embed(next(iter(train_loader))[0])
-            train_loss += config.jac_reg * jacobian_regulariser(x)
+            train_loss += config.lambda_jac * grokalign(x)
         train_loss.backward()
         optimizer.step()
         optimizer.zero_grad()
@@ -108,7 +108,7 @@ if __name__ == "__main__":
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--weight_decay', type=float, default=1.0)
     parser.add_argument('--fixed_embedding', action='store_true')
-    parser.add_argument('--jac_reg', type=float, default=0.0)
+    parser.add_argument('--lambda_jac', type=float, default=0.0)
     parser.add_argument('--steps', type=int, default=48000)
     parser.add_argument('--num_logs', type=int, default=48)
     parser.add_argument('--seed', type=int, default=0)

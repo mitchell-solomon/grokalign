@@ -6,7 +6,7 @@ import wandb as wb
 import argparse
 from tqdm import tqdm
 
-from utils import JacobianRegulariser, Centroids
+from utils import GrokAlign, Centroids
 
 def generate_xor_data(n, p, epsilon):
     x_signal = np.random.choice([-1, 1], size=(n, 2))
@@ -41,7 +41,7 @@ def evaluate_perturbations(model, X_test, y_test, amplitudes):
     return results
 
 def train(config, device='cuda'):
-    run_name = f"{config.p}p-{config.n}n-{config.epsilon}epsilon-{config.hdim}hdim-{config.weight_decay}Wd-{config.jr}Jr"
+    run_name = f"{config.p}p-{config.n}n-{config.epsilon}epsilon-{config.hdim}hdim-{config.weight_decay}Wd-{config.lambda_jac}GA"
     run = wb.init(project='xor_grokking', config=config, name=run_name)
 
     torch.manual_seed(0)
@@ -59,7 +59,7 @@ def train(config, device='cuda'):
     ).to(device).type(torch.float64)
 
     optimizer = torch.optim.SGD(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
-    jacobian_regulariser = JacobianRegulariser(model) if config.jr > 0.0 else None
+    grokalign = GrokAlign(model) if config.lambda_jac > 0.0 else None
     centroids = Centroids(model)
 
     logged_steps = np.unique(np.append(np.logspace(0, np.log10(config.steps), config.n_logs, dtype=int), [0, config.steps]))
@@ -81,8 +81,8 @@ def train(config, device='cuda'):
         optimizer.zero_grad()
         output = model(X).squeeze()
         loss = F.mse_loss(output, y)
-        if jacobian_regulariser is not None:
-            loss += config.jr * jacobian_regulariser(X)
+        if grokalign is not None:
+            loss += config.lambda_jac * grokalign(X)
         loss.backward()
         optimizer.step()
         pbar.set_description(f'{step} - Loss: {loss.item():.4f}')
@@ -97,7 +97,7 @@ if __name__ == '__main__':
     parser.add_argument('--epsilon', type=float, default=0.05)
     parser.add_argument('--hdim', type=int, default=2048)
     parser.add_argument('--lr', type=float, default=1e-1)
-    parser.add_argument('--jr', type=float, default=0.0)
+    parser.add_argument('--lambda_jac', type=float, default=0.0)
     parser.add_argument('--weight_decay', type=float, default=0.1)
     parser.add_argument('--steps', type=int, default=1000)
     parser.add_argument('--n_logs', type=int, default=64)

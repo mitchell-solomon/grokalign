@@ -18,7 +18,7 @@ from tqdm import tqdm
 import numpy as np
 import argparse
 
-from utils import JacobianRegulariser, Centroids, PC1
+from utils import GrokAlign, Centroids, PC1
 
 def construct_pipeline(config):
     image_pipeline = [
@@ -108,7 +108,7 @@ def construct_model(config):
     return model
 
 def train(config):
-    run_name = f"{config.loss_fn}-{config.weight_decay}Wd-{config.jac_reg}Jr"
+    run_name = f"{config.loss_fn}-{config.weight_decay}Wd-{config.lambda_jac}GA"
     wb.init(project='delayed_robustness', config=config, name=run_name)
     torch.manual_seed(config.seed)
     if 'cuda' in config.device:
@@ -118,7 +118,7 @@ def train(config):
     model = construct_model(config).to(config.device)
     one_hots = torch.eye(10).to(config.device)
 
-    jac_reg = JacobianRegulariser(model) if config.jac_reg > 0 else None
+    grokalign = GrokAlign(model) if config.lambda_jac > 0 else None
     centroids = Centroids(model)
     pc1 = PC1(model)
 
@@ -145,8 +145,8 @@ def train(config):
                 loss = nn.MSELoss()(output, one_hots[labels])
             elif config.loss_fn == 'CrossEntropy':
                 loss = nn.CrossEntropyLoss()(output, labels)
-            if jac_reg:
-                loss += config.jac_reg * jac_reg(x)
+            if grokalign:
+                loss += config.lambda_jac * grokalign(x)
             loss.backward()
             torch.nn.utils.clip_grad_value_(model.parameters(), 1.0)
             optimizer.step()
@@ -174,7 +174,7 @@ if __name__ == '__main__':
     parser.add_argument('--loss_fn', type=str, default='MSE', choices=['MSE', 'CrossEntropy'])
     parser.add_argument('--filt', type=int, default=32)
     parser.add_argument('--learning_rate', type=float, default=1e-3)
-    parser.add_argument('--jac_reg', type=float, default=0.0)
+    parser.add_argument('--lambda_jac', type=float, default=0.0)
     parser.add_argument('--weight_decay', type=float, default=1e-3)
     parser.add_argument('--steps', type=int, default=36000)
     parser.add_argument('--batch_size', type=int, default=256)

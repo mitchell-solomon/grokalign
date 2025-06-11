@@ -9,7 +9,7 @@ import torchvision
 import wandb as wb
 from tqdm import tqdm
 
-from utils import JacobianRegulariser, gradfilter_ema
+from utils import GrokAlign, gradfilter_ema
 
 
 def set_seed(seed):
@@ -63,7 +63,7 @@ def compute_accuracy(model, loader, device):
 
 
 def train(config, device='cuda', data_dir='./data', dtype=torch.float64):
-    run_name = f"{config.loss_fn}-{'GF' if config.grokfast else ''}{'Jr' if config.jac_reg > 0 else ''}{'Wd' if config.weight_decay > 0 else ''}{'At' if config.adv_training else ''}-{config.seed}"
+    run_name = f"{config.loss_fn}-{'GF' if config.grokfast else ''}{'GA' if config.lambda_jac > 0 else ''}{'Wd' if config.weight_decay > 0 else ''}{'At' if config.adv_training else ''}-{config.seed}"
     run = wb.init(project='accelerating_grokking', config=vars(config), name=run_name)
 
     torch.set_default_dtype(dtype)
@@ -73,7 +73,7 @@ def train(config, device='cuda', data_dir='./data', dtype=torch.float64):
     model = build_model(config, device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
 
-    jacobian_regulariser = JacobianRegulariser(model) if config.jac_reg > 0.0 else None
+    grokalign = GrokAlign(model) if config.lambda_jac > 0.0 else None
     one_hots = torch.eye(10, device=device)
     grads = None
 
@@ -102,8 +102,8 @@ def train(config, device='cuda', data_dir='./data', dtype=torch.float64):
             else:
                 raise ValueError(f"Unsupported loss function: {config.loss_fn}")
 
-            if jacobian_regulariser:
-                loss += config.jac_reg * jacobian_regulariser(x)
+            if grokalign:
+                loss += config.lambda_jac * grokalign(x)
 
             loss.backward()
             if config.grokfast:
@@ -137,7 +137,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--steps', type=int, default=100_000)
     parser.add_argument('--weight_decay', type=float, default=0.01)
-    parser.add_argument('--jac_reg', type=float, default=0.0)
+    parser.add_argument('--lambda_jac', type=float, default=0.0)
     parser.add_argument('--grokfast', action='store_true')
     parser.add_argument('--adv_training', action='store_true')
     parser.add_argument('--lr', type=float, default=1e-3)

@@ -10,7 +10,7 @@ import torch.nn as nn
 import torchvision
 import wandb as wb
 
-from utils import JacobianRegulariser, Centroids
+from utils import GrokAlign, Centroids
 
 def get_data(config):
     transform = torchvision.transforms.Compose([
@@ -68,7 +68,7 @@ def train(config):
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
     loss_fn = nn.MSELoss()
     one_hots = torch.eye(10).to(config.device)
-    jac_reg = JacobianRegulariser(model) if config.jac_reg > 0 else None
+    grokalign = GrokAlign(model) if config.jac_level > 0 else None
     centroids = Centroids(model)
 
     train_loader, test_loader = get_data(config)
@@ -81,8 +81,8 @@ def train(config):
             optimizer.zero_grad()
             outputs = model(x)
             loss = loss_fn(outputs, one_hots[labels])
-            if jac_reg:
-                loss += 1e-3 * torch.abs(config.jac_level - jac_reg(x))
+            if grokalign:
+                loss += 1e-3 * torch.abs(config.jac_level - grokalign(x))
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
