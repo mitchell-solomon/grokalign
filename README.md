@@ -1,6 +1,6 @@
 # GrokAlign: Geometric Characterisation and Acceleration of Grokking
 
-[Paper]() | [Blog](https://github.com/ThomasWalker1/grokalign)
+[Paper](https://arxiv.org/abs/2506.12284) | [Blog](https://thomaswalker1.github.io/blog/grokalign.html)
 
 This is the official GitHub repository for our paper "GrokAlign: Geometric Characterisation and Acceleration of Grokking". `utils.py` provides classes to perform GrokAlign, compute centroids, and compute the explained variance of the first principal component of the Jacobian matrix on a model for input batches.
 
