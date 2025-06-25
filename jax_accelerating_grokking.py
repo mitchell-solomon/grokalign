@@ -7,12 +7,15 @@ import optax
 import wandb as wb
 from tqdm import tqdm
 
+from functools import partial
+
 from jax_utils import (
     set_seed,
     get_mnist_loaders,
     build_model,
     compute_accuracy,
-    GrokAlign,
+    # GrokAlign,
+    grokalign_loss,
     gradfilter_ema,
 )
 
@@ -28,35 +31,45 @@ def train(config, data_dir="./data"):
     optimizer = optax.adamw(config.lr, weight_decay=config.weight_decay)
     opt_state = optimizer.init(params)
 
-    @jax.jit
-    def train_step(params, opt_state, ema, key, x, labels, sigma=0.0):
+
+    @partial(jax.jit, static_argnums=(7, 8, 9))
+    def train_step(
+        params, opt_state, ema, key, x, labels, sigma,
+        loss_fn_type, lambda_jac, use_grokfast
+    ):
+
         if config.adv_training:
             key, subkey = jax.random.split(key)
             x = x + jax.random.normal(subkey, x.shape) * sigma
 
-        def loss_fn(p, inp, lab):
+        def loss_fn(p, inp, lab, jac_key):
             logits = apply_fn(p, inp)
-            if config.loss_fn == "CrossEntropy":
-                loss = optax.softmax_cross_entropy_with_integer_labels(
-                    logits, lab
-                ).mean()
+            if loss_fn_type == "CrossEntropy":
+                loss = optax.softmax_cross_entropy_with_integer_labels(logits, lab).mean()
             else:
                 one_hot = jax.nn.one_hot(lab, 10)
                 loss = jnp.mean((logits - one_hot) ** 2)
-            if grokalign is not None:
-                loss = loss + config.lambda_jac * grokalign(p, inp)
+
+            if lambda_jac > 0.0:
+                loss += grokalign_loss(apply_fn, p, inp, jac_key, lambda_jac, num_projections=1)
+
             return loss
 
-        loss, grads = jax.value_and_grad(loss_fn)(params, x, labels)
 
-        if config.grokfast:
+        key, jac_key = jax.random.split(key)
+        loss, grads = jax.value_and_grad(loss_fn)(params, x, labels, jac_key)
+
+        if use_grokfast:
             grads, ema = gradfilter_ema(grads, ema=ema, alpha=0.8, lamb=0.1)
+
 
         updates, opt_state = optimizer.update(grads, opt_state, params)
         params = optax.apply_updates(params, updates)
         return params, opt_state, ema, key, loss
 
-    grokalign = GrokAlign(apply_fn) if config.lambda_jac > 0.0 else None
+
+
+    # grokalign = GrokAlign(apply_fn) if config.lambda_jac > 0.0 else None
     ema = None
 
     run_name = (
@@ -81,8 +94,10 @@ def train(config, data_dir="./data"):
 
         for x, labels in loaders["train"]:
             params, opt_state, ema, key, loss = train_step(
-                params, opt_state, ema, key, x, labels, sigma
+                params, opt_state, ema, key, x, labels, sigma,
+                config.loss_fn, config.lambda_jac, config.grokfast
             )
+
 
         total_time += time.time() - start
         pbar.set_description(f"{float(loss):.4f}")
