@@ -28,6 +28,34 @@ def train(config, data_dir="./data"):
     optimizer = optax.adamw(config.lr, weight_decay=config.weight_decay)
     opt_state = optimizer.init(params)
 
+    @jax.jit
+    def step(params, opt_state, ema, key, x, labels, sigma=0.0):
+        if config.adv_training:
+            key, subkey = jax.random.split(key)
+            x = x + jax.random.normal(subkey, x.shape) * sigma
+
+        def loss_fn(p, inp, lab):
+            logits = apply_fn(p, inp)
+            if config.loss_fn == "CrossEntropy":
+                loss = optax.softmax_cross_entropy_with_integer_labels(
+                    logits, lab
+                ).mean()
+            else:
+                one_hot = jax.nn.one_hot(lab, 10)
+                loss = jnp.mean((logits - one_hot) ** 2)
+            if grokalign is not None:
+                loss = loss + config.lambda_jac * grokalign(p, inp)
+            return loss
+
+        loss, grads = jax.value_and_grad(loss_fn)(params, x, labels)
+
+        if config.grokfast:
+            grads, ema = gradfilter_ema(grads, ema=ema, alpha=0.8, lamb=0.1)
+
+        updates, opt_state = optimizer.update(grads, opt_state, params)
+        params = optax.apply_updates(params, updates)
+        return params, opt_state, ema, key, loss
+
     grokalign = GrokAlign(apply_fn) if config.lambda_jac > 0.0 else None
     ema = None
 
@@ -48,32 +76,13 @@ def train(config, data_dir="./data"):
         if config.adv_training:
             train_acc = compute_accuracy(params, apply_fn, loaders["train"])
             sigma = max(0.06 * (1 - train_acc), 0.03)
+        else:
+            sigma = 0.0
 
         for x, labels in loaders["train"]:
-            if config.adv_training:
-                key, subkey = jax.random.split(key)
-                x = x + jax.random.normal(subkey, x.shape) * sigma
-
-            def loss_fn(p):
-                logits = apply_fn(p, x)
-                if config.loss_fn == "CrossEntropy":
-                    loss = optax.softmax_cross_entropy_with_integer_labels(
-                        logits, labels
-                    ).mean()
-                else:
-                    one_hot = jax.nn.one_hot(labels, 10)
-                    loss = jnp.mean((logits - one_hot) ** 2)
-                if grokalign is not None:
-                    loss = loss + config.lambda_jac * grokalign(p, x)
-                return loss
-
-            loss, grads = jax.value_and_grad(loss_fn)(params)
-
-            if config.grokfast:
-                grads, ema = gradfilter_ema(grads, ema=ema, alpha=0.8, lamb=0.1)
-
-            updates, opt_state = optimizer.update(grads, opt_state, params)
-            params = optax.apply_updates(params, updates)
+            params, opt_state, ema, key, loss = step(
+                params, opt_state, ema, key, x, labels, sigma
+            )
 
         total_time += time.time() - start
         pbar.set_description(f"{float(loss):.4f}")
