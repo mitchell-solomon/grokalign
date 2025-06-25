@@ -51,6 +51,7 @@ def get_mnist_loaders(train_points, test_points, batch_size, data_dir="./data"):
         collate_fn=collate,
     )
 
+
     return {"train": train_loader, "test": test_loader}
 
 
