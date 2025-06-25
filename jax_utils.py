@@ -69,11 +69,24 @@ def build_model(config, key):
 
 
 def compute_accuracy(params, apply_fn, loader):
-    acc = []
+    """Compute accuracy over a loader using a single batched call."""
+    xs, ys = [], []
     for x, labels in loader:
-        preds = jnp.argmax(apply_fn(params, x), axis=-1)
-        acc.append(jnp.mean(preds == labels))
-    return float(jnp.mean(jnp.array(acc)))
+        xs.append(x)
+        ys.append(labels)
+
+    if len(xs) == 0:
+        return 0.0
+
+    x = jnp.concatenate(xs, axis=0)
+    y = jnp.concatenate(ys, axis=0)
+
+    @jax.jit
+    def _predict(p, inputs):
+        return apply_fn(p, inputs)
+
+    preds = jnp.argmax(_predict(params, x), axis=-1)
+    return float(jnp.mean(preds == y))
 
 
 class GrokAlign:
@@ -88,6 +101,7 @@ class GrokAlign:
         v = v / jnp.clip(jnp.linalg.norm(v, axis=-1, keepdims=True), 1e-8)
         return v
 
+    @jax.jit
     def compute_jacobian_norm(self, params, x):
         def model_fn(inputs):
             return self.apply_fn(params, inputs)
@@ -105,14 +119,18 @@ class GrokAlign:
         scaling = output_dim / self.num_projections
         return jnp.sqrt(jnp.clip(norm_sum * scaling, 1e-8))
 
+    @jax.jit
     def __call__(self, params, inputs):
         return jnp.mean(self.compute_jacobian_norm(params, inputs))
 
 
+@jax.jit
 def gradfilter_ema(grads, ema=None, alpha=0.98, lamb=2.0):
     if ema is None:
         ema = grads
     else:
-        ema = tree_util.tree_map(lambda e, g: e * alpha + g * (1 - alpha), ema, grads)
+        ema = tree_util.tree_map(
+            lambda e, g: e * alpha + g * (1 - alpha), ema, grads
+        )
     grads = tree_util.tree_map(lambda g, e: g + e * lamb, grads, ema)
     return grads, ema
