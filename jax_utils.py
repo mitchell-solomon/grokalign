@@ -35,11 +35,22 @@ def get_mnist_loaders(train_points, test_points, batch_size, data_dir="./data"):
         return x, y
 
     train_loader = torch.utils.data.DataLoader(
-        train_subset, batch_size=batch_size, shuffle=False,
-        num_workers=4, pin_memory=True, collate_fn=collate)
+        train_subset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=True,
+        collate_fn=collate,
+    )
     test_loader = torch.utils.data.DataLoader(
-        test_subset, batch_size=batch_size, shuffle=False,
-        num_workers=4, pin_memory=True, collate_fn=collate)
+        test_subset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=True,
+        collate_fn=collate,
+    )
+
 
     return {"train": train_loader, "test": test_loader}
 
