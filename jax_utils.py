@@ -6,6 +6,7 @@ from jax.example_libraries import stax
 from functools import partial
 
 
+
 def set_seed(seed: int):
     """Seed numpy and JAX PRNG and return a PRNG key."""
     np.random.seed(seed)
