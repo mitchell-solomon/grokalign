@@ -3,6 +3,8 @@ import jax
 import jax.numpy as jnp
 from jax import random, tree_util, vmap
 from jax.example_libraries import stax
+from functools import partial
+
 
 
 def set_seed(seed: int):
@@ -42,7 +44,7 @@ def get_mnist_loaders(train_points, test_points, batch_size, data_dir="./data"):
             self.y = y
             self.batch = batch
 
-        @jax.jit
+        @partial(jax.jit, static_argnums=0)
         def _get_batch(self, start):
             end = start + self.batch
             return self.x[start:end], self.y[start:end]
