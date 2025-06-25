@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 from jax import random, tree_util, vmap
 from jax.example_libraries import stax
-import torch
+from functools import partial
 
 
 def set_seed(seed: int):
@@ -13,44 +13,61 @@ def set_seed(seed: int):
 
 
 def get_mnist_loaders(train_points, test_points, batch_size, data_dir="./data"):
-    """Return simple MNIST loaders yielding JAX arrays."""
-    import torchvision
-    transform = torchvision.transforms.Compose([
-        torchvision.transforms.ToTensor(),
-        torchvision.transforms.Normalize((0.1307,), (0.3081,)),
-        torchvision.transforms.Lambda(lambda x: x.view(-1)),
-    ])
-    train_set = torchvision.datasets.MNIST(root=data_dir, train=True,
-                                           transform=transform, download=True)
-    test_set = torchvision.datasets.MNIST(root=data_dir, train=False,
-                                          transform=transform, download=True)
+    """Return MNIST loaders with JITed preprocessing using TFDS."""
+    import tensorflow_datasets as tfds
 
-    train_subset = torch.utils.data.Subset(train_set, range(train_points))
-    test_subset = torch.utils.data.Subset(test_set, range(test_points))
+    mean = jnp.array(0.1307, dtype=jnp.float32)
+    std = jnp.array(0.3081, dtype=jnp.float32)
 
-    def collate(batch):
-        xs, ys = zip(*batch)
-        x = jnp.stack([jnp.array(i.numpy()) for i in xs])
-        y = jnp.array([int(i) for i in ys])
-        return x, y
+    def _preprocess_img(img):
+        img = img.astype(jnp.float32) / 255.0
+        img = (img - mean) / std
+        return jnp.reshape(img, -1)
 
-    train_loader = torch.utils.data.DataLoader(
-        train_subset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=0,
-        pin_memory=True,
-        collate_fn=collate,
-    )
-    test_loader = torch.utils.data.DataLoader(
-        test_subset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=0,
-        pin_memory=True,
-        collate_fn=collate,
-    )
+    preprocess_batch = jax.jit(vmap(_preprocess_img))
 
+    def load_split(split, points):
+        ds = tfds.load(
+            "mnist",
+            split=f"{split}[:{points}]",
+            batch_size=-1,
+            data_dir=data_dir,
+        )
+        images = preprocess_batch(jnp.array(ds["image"].numpy()))
+        labels = jnp.array(ds["label"].numpy(), dtype=jnp.int32)
+        return images, labels
+
+    class SimpleLoader:
+        def __init__(self, x, y, batch):
+            self.x = x
+            self.y = y
+            self.batch = batch
+
+        @partial(jax.jit, static_argnums=0)
+        def _get_batch(self, start):
+            """Return a batch using JAX dynamic slicing."""
+            start = jnp.asarray(start, dtype=jnp.int32)
+            x_slice = jax.lax.dynamic_slice(
+                self.x,
+                (start, 0),
+                (self.batch, self.x.shape[1]),
+            )
+            y_slice = jax.lax.dynamic_slice(
+                self.y,
+                (start,),
+                (self.batch,),
+            )
+            return x_slice, y_slice
+
+        def __iter__(self):
+            for i in range(0, self.x.shape[0], self.batch):
+                yield self._get_batch(i)
+
+    x_train, y_train = load_split("train", train_points)
+    x_test, y_test = load_split("test", test_points)
+
+    train_loader = SimpleLoader(x_train, y_train, batch_size)
+    test_loader = SimpleLoader(x_test, y_test, batch_size)
 
     return {"train": train_loader, "test": test_loader}
 
