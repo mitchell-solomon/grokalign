@@ -6,7 +6,6 @@ from jax.example_libraries import stax
 from functools import partial
 
 
-
 def set_seed(seed: int):
     """Seed numpy and JAX PRNG and return a PRNG key."""
     np.random.seed(seed)
@@ -46,8 +45,19 @@ def get_mnist_loaders(train_points, test_points, batch_size, data_dir="./data"):
 
         @partial(jax.jit, static_argnums=0)
         def _get_batch(self, start):
-            end = start + self.batch
-            return self.x[start:end], self.y[start:end]
+            """Return a batch using JAX dynamic slicing."""
+            start = jnp.asarray(start, dtype=jnp.int32)
+            x_slice = jax.lax.dynamic_slice(
+                self.x,
+                (start, 0),
+                (self.batch, self.x.shape[1]),
+            )
+            y_slice = jax.lax.dynamic_slice(
+                self.y,
+                (start,),
+                (self.batch,),
+            )
+            return x_slice, y_slice
 
         def __iter__(self):
             for i in range(0, self.x.shape[0], self.batch):
