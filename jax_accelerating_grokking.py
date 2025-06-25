@@ -29,7 +29,7 @@ def train(config, data_dir="./data"):
     opt_state = optimizer.init(params)
 
     @jax.jit
-    def step(params, opt_state, ema, key, x, labels, sigma=0.0):
+    def train_step(params, opt_state, ema, key, x, labels, sigma=0.0):
         if config.adv_training:
             key, subkey = jax.random.split(key)
             x = x + jax.random.normal(subkey, x.shape) * sigma
@@ -80,7 +80,7 @@ def train(config, data_dir="./data"):
             sigma = 0.0
 
         for x, labels in loaders["train"]:
-            params, opt_state, ema, key, loss = step(
+            params, opt_state, ema, key, loss = train_step(
                 params, opt_state, ema, key, x, labels, sigma
             )
 
